@@ -1,0 +1,90 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eHub Video Downloader</title>
+<meta name="description" content="eHub Video Downloader - Save videos from supported public links.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="header">
+  <a class="logo" href="#">e<span>Hub</span></a>
+  <button id="themeBtn" class="theme">☀</button>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="tag">✦ FREE ONLINE VIDEO TOOL</div>
+    <h1>Video Downloader<br><span>Made Simple.</span></h1>
+    <p>Paste a video link and check whether it can be downloaded.</p>
+
+    <div class="platforms">
+      <span>📸 Instagram</span>
+      <span>📘 Facebook</span>
+      <span>𝕏 Twitter</span>
+      <span>▶ YouTube</span>
+      <span>♪ TikTok</span>
+      <span>📌 Pinterest</span>
+    </div>
+  </section>
+
+  <section class="downloader">
+    <h2>Download your video</h2>
+    <p class="muted">Paste your public video URL below</p>
+
+    <div class="input-area">
+      <input id="videoUrl" type="url"
+        placeholder="https://example.com/video.mp4">
+      <button id="pasteBtn">Paste</button>
+    </div>
+
+    <button id="checkBtn" class="download-btn">
+      Find Video <span>→</span>
+    </button>
+
+    <div id="message" class="message"></div>
+
+    <div id="preview" class="preview hidden">
+      <video id="videoPreview" controls playsinline></video>
+      <p id="platformName"></p>
+      <button id="directDownload" class="download-btn">
+        Download Video ↓
+      </button>
+    </div>
+  </section>
+
+  <section class="history">
+    <div class="history-head">
+      <h2>Recent downloads</h2>
+      <button id="clearHistory">Clear history</button>
+    </div>
+    <div id="historyList" class="history-list">
+      <p class="muted">No downloads yet.</p>
+    </div>
+  </section>
+
+  <section class="steps">
+    <h2>How to use eHub</h2>
+    <div class="step-grid">
+      <article><b>01</b><h3>Copy link</h3>
+        <p>Copy a publicly accessible video URL.</p></article>
+      <article><b>02</b><h3>Paste link</h3>
+        <p>Paste it into the downloader.</p></article>
+      <article><b>03</b><h3>Download</h3>
+        <p>Save compatible videos to your device.</p></article>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <a class="logo" href="#">e<span>Hub</span></a>
+  <p>© <span id="year"></span> eHub Video Downloader</p>
+  <small>Respect copyright and platform terms. Download only content you own or have permission to save.</small>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

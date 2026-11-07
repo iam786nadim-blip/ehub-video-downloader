@@ -1,0 +1,251 @@
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --bg:#0e1024;
+  --card:#1a1d3b;
+  --text:#fff;
+  --muted:#a5a8c5;
+  --border:#343653;
+  --field:#11142d;
+}
+
+* {box-sizing:border-box}
+
+body {
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  transition:.3s;
+}
+
+body.light {
+  --bg:#f3f4ff;
+  --card:#fff;
+  --text:#17182d;
+  --muted:#696b83;
+  --border:#dedff0;
+  --field:#f5f6ff;
+}
+
+.header {
+  max-width:1050px;
+  margin:auto;
+  padding:22px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.logo {
+  font-size:27px;
+  font-weight:800;
+  color:#a78bfa;
+  text-decoration:none;
+}
+
+.logo span {color:var(--text)}
+
+.theme {
+  padding:10px 14px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px;
+  color:var(--text);
+  cursor:pointer;
+}
+
+main {
+  max-width:850px;
+  margin:auto;
+  padding:20px;
+}
+
+.hero {
+  text-align:center;
+  padding:60px 0 35px;
+}
+
+.tag {
+  display:inline-block;
+  padding:9px 16px;
+  border-radius:30px;
+  color:#b69cff;
+  background:#8b5cf622;
+  font-size:11px;
+  font-weight:bold;
+  letter-spacing:1px;
+}
+
+h1 {
+  font-size:clamp(40px,7vw,65px);
+  line-height:1.12;
+  letter-spacing:-2px;
+  margin:24px 0 15px;
+}
+
+h1 span {
+  background:linear-gradient(90deg,#a78bfa,#38bdf8,#2dd4bf);
+  background-clip:text;
+  color:transparent;
+}
+
+.hero p,.muted {color:var(--muted)}
+
+.platforms {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:10px;
+  margin-top:28px;
+}
+
+.platforms span {
+  background:var(--card);
+  border:1px solid var(--border);
+  padding:10px 13px;
+  border-radius:10px;
+  font-size:12px;
+}
+
+.downloader,.history {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:25px;
+  margin-top:25px;
+}
+
+.downloader h2,.history h2 {
+  margin-top:0;
+}
+
+.input-area {
+  display:flex;
+  gap:8px;
+  background:var(--field);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:6px;
+  margin-top:20px;
+}
+
+input {
+  width:100%;
+  min-width:0;
+  background:transparent;
+  color:var(--text);
+  border:0;
+  outline:0;
+  padding:12px;
+}
+
+button {font-family:inherit}
+
+#pasteBtn {
+  border:0;
+  background:var(--card);
+  color:var(--text);
+  padding:10px 15px;
+  border-radius:9px;
+  cursor:pointer;
+}
+
+.download-btn {
+  width:100%;
+  padding:16px;
+  border:0;
+  border-radius:11px;
+  margin-top:13px;
+  background:linear-gradient(100deg,#8b5cf6,#6366f1,#14b8a6);
+  color:white;
+  font-weight:800;
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+}
+
+.message {
+  margin-top:15px;
+  font-size:13px;
+  line-height:1.6;
+  color:var(--muted);
+}
+
+.preview {
+  margin-top:20px;
+}
+
+.preview video {
+  width:100%;
+  max-height:360px;
+  background:#000;
+  border-radius:12px;
+}
+
+.hidden {display:none}
+
+.history-head {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+
+#clearHistory {
+  border:0;
+  background:transparent;
+  color:#a78bfa;
+  cursor:pointer;
+}
+
+.history-list {
+  font-size:13px;
+  overflow-wrap:anywhere;
+}
+
+.history-item {
+  border-top:1px solid var(--border);
+  padding:12px 0;
+}
+
+.steps {
+  padding:65px 0;
+  text-align:center;
+}
+
+.step-grid {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:15px;
+  margin-top:25px;
+  text-align:left;
+}
+
+.step-grid article {
+  background:var(--card);
+  border:1px solid var(--border);
+  padding:18px;
+  border-radius:14px;
+}
+
+.step-grid b {color:#a78bfa}
+.step-grid p {color:var(--muted);font-size:13px}
+
+footer {
+  text-align:center;
+  padding:25px 15px;
+  border-top:1px solid var(--border);
+  color:var(--muted);
+  font-size:12px;
+}
+
+footer small {line-height:1.7}
+
+@media(max-width:600px) {
+  .hero {padding-top:40px}
+  .downloader,.history {padding:18px}
+  .step-grid {grid-template-columns:1fr}
+  h1 {letter-spacing:-1px}
+}
