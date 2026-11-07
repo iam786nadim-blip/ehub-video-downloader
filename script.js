@@ -4,12 +4,8 @@ const $ = id => document.getElementById(id);
 const API = "https://ehub-video-downloader.onrender.com";
 
 let currentVideo = null;
-let selectedFormat = null;
-let availableFormats = [];
-
-// -------------------------
-// INITIAL SETTINGS
-// -------------------------
+let selectedQuality = "best";
+let busy = false;
 
 $("year").textContent = new Date().getFullYear();
 
@@ -18,250 +14,218 @@ function showMessage(message, type = "") {
   $("message").className = "message " + type;
 }
 
-function setBusy(busy) {
-  $("checkBtn").disabled = busy;
-  $("checkBtn").textContent = busy ? "Please wait..." : "Get Video";
-  $("downloadBtn").disabled = busy || !selectedFormat;
+function setBusy(value) {
+  busy = value;
+  $("checkBtn").disabled = value;
+  $("checkBtn").textContent = value ? "Please wait..." : "Find Video";
+  $("downloadBtn").disabled = value || !currentVideo;
 }
 
-// -------------------------
 // THEME
-// -------------------------
 
 function loadTheme() {
-  const theme = localStorage.getItem("ehubTheme");
+  let theme = "dark";
 
-  if (theme === "light") {
-    document.body.classList.add("light");
-    $("themeBtn").textContent = "🌙";
-  } else {
-    $("themeBtn").textContent = "☀️";
-  }
+  try {
+    theme = localStorage.getItem("ehubTheme") || "dark";
+  } catch {}
+
+  document.body.classList.toggle("light", theme === "light");
+  $("themeBtn").textContent = theme === "light" ? "🌙" : "☀️";
 }
 
 $("themeBtn").onclick = () => {
-  document.body.classList.toggle("light");
+  const light = !document.body.classList.contains("light");
 
-  const light = document.body.classList.contains("light");
+  document.body.classList.toggle("light", light);
 
-  localStorage.setItem("ehubTheme", light ? "light" : "dark");
+  try {
+    localStorage.setItem("ehubTheme", light ? "light" : "dark");
+  } catch {}
+
   $("themeBtn").textContent = light ? "🌙" : "☀️";
 };
 
 loadTheme();
 
-// -------------------------
-// PLATFORM DETECTION
-// -------------------------
+// PLATFORM
 
 function detectPlatform(url) {
   const host = new URL(url).hostname.toLowerCase();
 
-  if (
-    host === "x.com" ||
-    host.endsWith(".x.com") ||
-    host === "twitter.com" ||
-    host.endsWith(".twitter.com")
-  ) return "X / Twitter";
+  if (host.includes("youtube.com") || host === "youtu.be")
+    return "YouTube";
 
-  if (
-    host === "instagram.com" ||
-    host.endsWith(".instagram.com")
-  ) return "Instagram";
+  if (host.includes("instagram.com"))
+    return "Instagram";
 
-  if (
-    host === "facebook.com" ||
-    host.endsWith(".facebook.com") ||
-    host === "fb.watch"
-  ) return "Facebook";
+  if (host.includes("facebook.com") || host === "fb.watch")
+    return "Facebook";
 
-  if (
-    host === "tiktok.com" ||
-    host.endsWith(".tiktok.com")
-  ) return "TikTok";
+  if (host.includes("tiktok.com"))
+    return "TikTok";
 
-  if (
-    host === "youtube.com" ||
-    host.endsWith(".youtube.com") ||
-    host === "youtu.be"
-  ) return "YouTube";
+  if (host.includes("twitter.com") || host.includes("x.com"))
+    return "X / Twitter";
 
-  throw new Error("Unsupported platform.");
+  throw new Error("This platform is not supported by the frontend.");
 }
 
-// -------------------------
-// FORMAT HELPERS
-// -------------------------
+function getYouTubeId(url) {
+  try {
+    const u = new URL(url);
 
-function formatSize(bytes) {
-  if (!bytes) return "Size unavailable";
+    if (u.hostname.includes("youtu.be"))
+      return u.pathname.split("/").filter(Boolean)[0];
 
-  const mb = bytes / (1024 * 1024);
+    if (u.pathname.includes("/shorts/"))
+      return u.pathname.split("/")[2];
 
-  if (mb >= 1024) {
-    return (mb / 1024).toFixed(2) + " GB";
+    if (u.pathname.includes("/embed/"))
+      return u.pathname.split("/")[2];
+
+    return u.searchParams.get("v");
+  } catch {
+    return null;
   }
-
-  return mb.toFixed(1) + " MB";
 }
 
 function formatDuration(seconds) {
-  if (!seconds) return "Duration unavailable";
+  if (seconds == null) return "Duration unavailable";
 
-  const minutes = Math.floor(seconds / 60);
-  const remaining = Math.floor(seconds % 60);
+  const n = Number(seconds);
 
-  return `${minutes}m ${remaining}s`;
+  if (!Number.isFinite(n)) return "Duration unavailable";
+
+  const h = Math.floor(n / 3600);
+  const m = Math.floor((n % 3600) / 60);
+  const s = Math.floor(n % 60);
+
+  return h
+    ? `${h}h ${m}m ${s}s`
+    : `${m}m ${s}s`;
 }
 
-// -------------------------
-// PASTE BUTTON
-// -------------------------
+// PASTE
 
 $("pasteBtn").onclick = async () => {
   try {
-    $("videoUrl").value = await navigator.clipboard.readText();
-    showMessage("Link pasted successfully.", "success");
+    const text = await navigator.clipboard.readText();
+
+    if (!text.trim()) throw new Error();
+
+    $("videoUrl").value = text.trim();
+    showMessage("Link pasted. Now click Find Video.", "success");
+
   } catch {
-    showMessage("Please paste your link manually.");
+    $("videoUrl").focus();
+    showMessage("Long press the input box and select Paste.");
   }
 };
 
-// -------------------------
-// RENDER QUALITIES
-// -------------------------
+// PREVIEW
 
-function renderQualities(formats) {
+function renderPreview(video) {
+  const area = $("previewArea");
+  area.replaceChildren();
+
+  if (video.platform === "YouTube") {
+    const id = getYouTubeId(video.url);
+
+    if (id) {
+      const frame = document.createElement("iframe");
+
+      frame.src =
+        "https://www.youtube-nocookie.com/embed/" +
+        encodeURIComponent(id);
+
+      frame.title = "YouTube preview";
+      frame.allowFullscreen = true;
+      frame.allow =
+        "accelerometer; autoplay; encrypted-media; picture-in-picture";
+
+      area.appendChild(frame);
+
+      $("previewMessage").textContent =
+        "YouTube preview is available above.";
+
+    } else {
+      area.textContent = "Preview unavailable.";
+    }
+
+  } else {
+    const placeholder = document.createElement("div");
+
+    placeholder.className = "preview-placeholder";
+    placeholder.innerHTML =
+      "<span>▶</span><p>Open the original video to preview.</p>";
+
+    area.appendChild(placeholder);
+
+    $("previewMessage").textContent =
+      "This platform does not provide an embedded preview here.";
+  }
+
+  $("openOriginal").href = video.url;
+}
+
+// QUALITY OPTIONS
+
+const qualities = [
+  { value: "best", label: "Best Available", desc: "Highest available quality" },
+  { value: "1080", label: "1080p", desc: "Full HD" },
+  { value: "720", label: "720p", desc: "HD" },
+  { value: "480", label: "480p", desc: "Standard" },
+  { value: "360", label: "360p", desc: "Low data usage" }
+];
+
+function renderQualities() {
   const list = $("qualityList");
+  list.replaceChildren();
 
-  list.innerHTML = "";
+  qualities.forEach(q => {
+    const button = document.createElement("button");
 
-  $("qualityCount").textContent =
-    formats.length + " formats";
+    button.type = "button";
+    button.className =
+      "quality-item" +
+      (selectedQuality === q.value ? " selected" : "");
 
-  formats.forEach(format => {
-    const item = document.createElement("div");
-
-    item.className = "quality-item";
-    item.dataset.formatId = format.format_id;
-
-    const info = document.createElement("div");
+    const info = document.createElement("span");
     info.className = "quality-info";
 
     const title = document.createElement("strong");
-    title.textContent = `${format.height}p`;
+    title.textContent = q.label;
 
-    const details = document.createElement("small");
-    details.textContent =
-      `${format.ext.toUpperCase()} · ${formatSize(format.filesize)}`;
+    const desc = document.createElement("small");
+    desc.textContent = q.desc;
 
-    info.append(title, details);
+    info.append(title, desc);
 
-    const actions = document.createElement("div");
-    actions.className = "quality-actions";
+    const status = document.createElement("span");
+    status.className = "quality-status";
+    status.textContent =
+      selectedQuality === q.value ? "✓ Selected" : "Select";
 
-    const play = document.createElement("button");
-    play.type = "button";
-    play.className = "play-quality";
-    play.textContent = "▶ Play";
+    button.append(info, status);
 
-    play.onclick = () => playVideo(format);
-
-    const download = document.createElement("button");
-    download.type = "button";
-    download.textContent = "↓ Download";
-
-    download.onclick = () => downloadVideo(format);
-
-    actions.append(play, download);
-    item.append(info, actions);
-
-    item.onclick = event => {
-      if (event.target.closest("button")) return;
-      selectFormat(format);
+    button.onclick = () => {
+      selectedQuality = q.value;
+      renderQualities();
     };
 
-    list.appendChild(item);
+    list.appendChild(button);
   });
 }
 
-// -------------------------
-// SELECT FORMAT
-// -------------------------
-
-function selectFormat(format) {
-  selectedFormat = format;
-
-  document.querySelectorAll(".quality-item").forEach(item => {
-    item.classList.toggle(
-      "selected",
-      item.dataset.formatId === format.format_id
-    );
-  });
-
-  $("downloadBtn").disabled = false;
-  $("playerMessage").textContent =
-    `Selected quality: ${format.height}p`;
-}
-
-// -------------------------
-// PLAY ONLINE
-// -------------------------
-
-async function playVideo(format) {
-  if (!currentVideo) return;
-
-  selectFormat(format);
-
-  const player = $("videoPlayer");
-
-  const params = new URLSearchParams({
-    url: currentVideo.url,
-    format_id: format.format_id
-  });
-
-  const streamUrl = `${API}/api/stream?${params.toString()}`;
-
-  player.pause();
-  player.removeAttribute("src");
-  player.load();
-
-  player.src = streamUrl;
-  player.load();
-
-  $("playerMessage").textContent =
-    `Loading ${format.height}p video...`;
-
-  try {
-    await player.play();
-    $("playerMessage").textContent =
-      `Now playing ${format.height}p`;
-  } catch {
-    $("playerMessage").textContent =
-      "Press the Play button on the video player to start playback.";
-  }
-
-  player.scrollIntoView({
-    behavior: "smooth",
-    block: "center"
-  });
-}
-
-// -------------------------
 // GET VIDEO
-// -------------------------
 
 $("checkBtn").onclick = async () => {
   const url = $("videoUrl").value.trim();
 
   currentVideo = null;
-  selectedFormat = null;
-  availableFormats = [];
-
   $("results").classList.add("hidden");
-  $("videoPlayer").pause();
-  $("videoPlayer").removeAttribute("src");
-  $("videoPlayer").load();
+  $("downloadBtn").disabled = true;
 
   if (!url) {
     showMessage("Please enter a video link.", "error");
@@ -273,22 +237,22 @@ $("checkBtn").onclick = async () => {
   try {
     const parsed = new URL(url);
 
-    if (parsed.protocol !== "https:") {
-      throw new Error("Please use a valid HTTPS link.");
+    if (!["https:", "http:"].includes(parsed.protocol)) {
+      throw new Error("Invalid video URL.");
     }
 
     platform = detectPlatform(url);
 
   } catch (error) {
-    showMessage(error.message || "Invalid video link.", "error");
+    showMessage(error.message || "Invalid link.", "error");
     return;
   }
 
   setBusy(true);
-  showMessage("Finding available video qualities...");
+  showMessage("Connecting to eHub server...");
 
   try {
-    const response = await fetch(`${API}/api/info`, {
+    const response = await fetch(API + "/api/info", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -296,40 +260,37 @@ $("checkBtn").onclick = async () => {
       body: JSON.stringify({ url })
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      throw new Error(data.detail || "Unable to find video.");
-    }
+      const data = await response.json().catch(() => ({}));
 
-    if (!Array.isArray(data.formats) || data.formats.length === 0) {
       throw new Error(
-        "No browser-compatible video formats are available."
+        data.detail || "Unable to find this video."
       );
     }
 
+    const data = await response.json();
+
     currentVideo = {
       url,
-      platform,
+      platform: data.site || platform,
       title: data.title || "Video",
       duration: data.duration
     };
 
-    availableFormats = data.formats;
+    selectedQuality = "best";
 
-    $("platformName").textContent = platform;
+    $("platformName").textContent = currentVideo.platform;
     $("videoTitle").textContent = currentVideo.title;
-    $("videoDuration").textContent =
-      formatDuration(currentVideo.duration);
 
-    renderQualities(availableFormats);
+    $("videoMeta").textContent =
+      "Duration: " + formatDuration(currentVideo.duration);
+
+    renderPreview(currentVideo);
+    renderQualities();
 
     $("results").classList.remove("hidden");
 
-    showMessage(
-      `Found ${availableFormats.length} playable video formats.`,
-      "success"
-    );
+    showMessage("Video found successfully!", "success");
 
     $("results").scrollIntoView({
       behavior: "smooth",
@@ -338,72 +299,65 @@ $("checkBtn").onclick = async () => {
 
   } catch (error) {
     showMessage(
-      error.message || "Something went wrong.",
+      error.message || "Backend connection failed.",
       "error"
     );
+
   } finally {
     setBusy(false);
   }
 };
 
-// -------------------------
-// DOWNLOAD SELECTED FORMAT
-// -------------------------
+// DOWNLOAD
 
-async function downloadVideo(format) {
-  if (!currentVideo || !format) return;
-
-  selectFormat(format);
+$("downloadBtn").onclick = async () => {
+  if (!currentVideo || busy) return;
 
   setBusy(true);
 
-  showMessage(
-    `Downloading ${format.height}p video. Please wait...`
-  );
+  showMessage("Preparing your download...");
 
   try {
-    const response = await fetch(`${API}/api/download`, {
+    const response = await fetch(API + "/api/download", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
         url: currentVideo.url,
-        format_id: format.format_id
+        quality: selectedQuality
       })
     });
 
     if (!response.ok) {
-      let message = "Download failed.";
+      const data = await response.json().catch(() => ({}));
 
-      try {
-        const data = await response.json();
-        message = data.detail || message;
-      } catch {}
-
-      throw new Error(message);
+      throw new Error(
+        data.detail || "Download failed."
+      );
     }
 
     const blob = await response.blob();
 
     if (!blob.size) {
-      throw new Error("Downloaded file is empty.");
+      throw new Error("Empty video file received.");
     }
 
-    const contentDisposition =
+    const disposition =
       response.headers.get("content-disposition") || "";
 
-    const match = contentDisposition.match(
+    const match = disposition.match(
       /filename\*?=(?:UTF-8''|")?([^";]+)"?/i
     );
 
     let filename = match
-      ? decodeURIComponent(match[1])
-      : `ehub-video-${format.height}p.${format.ext}`;
+      ? decodeURIComponent(match[1].replace(/"/g, ""))
+      : "ehub-video.mp4";
 
     const objectUrl = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
+
     link.href = objectUrl;
     link.download = filename;
 
@@ -411,40 +365,36 @@ async function downloadVideo(format) {
     link.click();
     link.remove();
 
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+    }, 60000);
 
     addHistory(
       currentVideo.platform,
       currentVideo.title,
-      format.height
+      selectedQuality
     );
 
-    showMessage(
-      `${format.height}p download started successfully.`,
-      "success"
-    );
+    showMessage("Download started successfully!", "success");
 
   } catch (error) {
     showMessage(error.message || "Download failed.", "error");
+
   } finally {
     setBusy(false);
   }
-}
-
-$("downloadBtn").onclick = () => {
-  if (selectedFormat) {
-    downloadVideo(selectedFormat);
-  }
 };
 
-// -------------------------
 // HISTORY
-// -------------------------
 
 function addHistory(platform, title, quality) {
-  let history = JSON.parse(
-    localStorage.getItem("ehubHistory") || "[]"
-  );
+  let history = [];
+
+  try {
+    history = JSON.parse(
+      localStorage.getItem("ehubHistory") || "[]"
+    );
+  } catch {}
 
   history.unshift({
     platform,
@@ -453,25 +403,30 @@ function addHistory(platform, title, quality) {
     date: new Date().toLocaleString()
   });
 
-  history = history.slice(0, 10);
-
-  localStorage.setItem(
-    "ehubHistory",
-    JSON.stringify(history)
-  );
+  try {
+    localStorage.setItem(
+      "ehubHistory",
+      JSON.stringify(history.slice(0, 10))
+    );
+  } catch {}
 
   renderHistory();
 }
 
 function renderHistory() {
-  const history = JSON.parse(
-    localStorage.getItem("ehubHistory") || "[]"
-  );
+  let history = [];
 
-  $("historyList").innerHTML = "";
+  try {
+    history = JSON.parse(
+      localStorage.getItem("ehubHistory") || "[]"
+    );
+  } catch {}
+
+  const list = $("historyList");
+  list.replaceChildren();
 
   if (!history.length) {
-    $("historyList").textContent = "No downloads yet.";
+    list.textContent = "No downloads yet.";
     return;
   }
 
@@ -481,14 +436,14 @@ function renderHistory() {
 
     const title = document.createElement("strong");
     title.textContent =
-      `${entry.platform} · ${entry.quality}p`;
+      `${entry.platform} · ${entry.quality}`;
 
-    const details = document.createElement("div");
-    details.textContent =
+    const detail = document.createElement("div");
+    detail.textContent =
       `${entry.title} · ${entry.date}`;
 
-    item.append(title, details);
-    $("historyList").appendChild(item);
+    item.append(title, detail);
+    list.appendChild(item);
   });
 }
 
@@ -498,4 +453,3 @@ $("clearHistory").onclick = () => {
 };
 
 renderHistory();
-  
