@@ -5,129 +5,122 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#101126">
-  <meta name="description" content="eHub Video Downloader - Download publicly accessible videos in your preferred quality.">
+  <meta name="description" content="eHub Video Downloader">
   <title>eHub - Video Downloader</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <header class="topbar">
-    <a href="#" class="logo">
-      <span class="logo-icon">e</span>
-      <span>eHub</span>
-    </a>
-    <button id="themeBtn" class="icon-btn" aria-label="Change theme">☀️</button>
-  </header>
+<header class="topbar">
+  <a href="#" class="logo"><span>e</span> eHub</a>
+  <button id="themeBtn" class="icon-btn">☀️</button>
+</header>
 
-  <main class="container">
+<main class="container">
 
-    <section class="hero">
-      <div class="tag">✦ SIMPLE • FAST • FREE</div>
-      <h1>Video Downloader</h1>
-      <p>Download videos from supported platforms in your preferred quality.</p>
-    </section>
+  <section class="hero">
+    <div class="tag">ALL-IN-ONE VIDEO DOWNLOADER</div>
+    <h1>Download Your Videos</h1>
+    <p>Paste a video link, preview it online and choose your quality.</p>
+  </section>
 
-    <section class="download-card">
+  <section class="download-card">
 
-      <label for="videoUrl">Paste your video link</label>
+    <label for="videoUrl">Video URL</label>
 
-      <div class="url-box">
-        <input
-          type="url"
-          id="videoUrl"
-          placeholder="https://x.com/username/status/..."
-          autocomplete="url"
-        >
-        <button id="pasteBtn" class="paste-btn" type="button">Paste</button>
+    <div class="url-box">
+      <input id="videoUrl" type="url"
+        placeholder="Paste X, Instagram, Facebook, TikTok or YouTube link">
+      <button id="pasteBtn" type="button">Paste</button>
+    </div>
+
+    <button id="checkBtn" class="primary-btn" type="button">
+      Get Video
+    </button>
+
+    <p id="message" class="message" role="status" aria-live="polite">
+      Paste a video link to get started.
+    </p>
+
+    <section id="results" class="hidden">
+
+      <div class="video-heading">
+        <div>
+          <span id="platformName" class="platform-name">Platform</span>
+          <h2 id="videoTitle">Video title</h2>
+          <p id="videoDuration" class="muted"></p>
+        </div>
       </div>
 
-      <div class="quality-selector">
-        <label for="quality">Select Video Quality</label>
-        <select id="quality">
-          <option value="best">Best Available Quality</option>
-          <option value="480">480p</option>
-          <option value="720" selected>720p HD</option>
-          <option value="1080">1080p Full HD</option>
-          <option value="1440">1440p 2K</option>
-        </select>
+      <h3 class="section-title">Online Video Player</h3>
+
+      <div class="player-wrap">
+        <video id="videoPlayer" controls playsinline preload="metadata">
+          Your browser does not support video playback.
+        </video>
       </div>
 
-      <button id="checkBtn" class="primary-btn" type="button">
-        Find Video
-      </button>
-
-      <p id="message" class="message" role="status" aria-live="polite">
-        Paste a video link to get started.
+      <p id="playerMessage" class="muted small">
+        Select a quality below to play the video.
       </p>
 
-      <div id="preview" class="video-info hidden">
-
-        <div class="video-icon">▶</div>
-
-        <div class="video-details">
-          <span id="platformName" class="platform-name">Platform</span>
-          <h3 id="videoTitle">Video title</h3>
-          <p id="videoDuration">Duration: Unknown</p>
-        </div>
-
-        <button id="directDownload" class="download-btn" type="button" disabled>
-          Download Video
-        </button>
-
+      <div class="quality-heading">
+        <h3>Available Qualities</h3>
+        <span id="qualityCount" class="muted"></span>
       </div>
+
+      <div id="qualityList" class="quality-list"></div>
+
+      <button id="downloadBtn" class="download-btn" type="button" disabled>
+        Download Selected Quality
+      </button>
 
     </section>
 
-    <section class="features">
-      <h2>Why eHub?</h2>
+  </section>
 
-      <div class="feature-grid">
-        <div class="feature">
-          <span>⚡</span>
-          <h3>Fast</h3>
-          <p>Simple video downloading process.</p>
-        </div>
-
-        <div class="feature">
-          <span>🎬</span>
-          <h3>Quality</h3>
-          <p>Choose from available video resolutions.</p>
-        </div>
-
-        <div class="feature">
-          <span>📱</span>
-          <h3>Mobile Friendly</h3>
-          <p>Designed for mobile and desktop.</p>
-        </div>
+  <section class="features">
+    <h2>Why eHub?</h2>
+    <div class="feature-grid">
+      <div class="feature">
+        <span>▶️</span>
+        <h3>Online Preview</h3>
+        <p>Play supported videos before downloading.</p>
       </div>
-    </section>
-
-    <section class="history-section">
-      <div class="history-heading">
-        <h2>Recent Activity</h2>
-        <button id="clearHistory" class="clear-btn" type="button">
-          Clear History
-        </button>
+      <div class="feature">
+        <span>🎬</span>
+        <h3>Multiple Qualities</h3>
+        <p>Choose from available resolutions.</p>
       </div>
-
-      <div id="historyList" class="history-list">
-        No downloads yet.
+      <div class="feature">
+        <span>📱</span>
+        <h3>Mobile Friendly</h3>
+        <p>Works on phones and computers.</p>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="notice">
-      <strong>Important:</strong>
-      Only download videos you own or are authorized to save.
-      Private, DRM-protected, or restricted content may not be available.
-    </section>
+  <section class="history-section">
+    <div class="history-heading">
+      <h2>Download History</h2>
+      <button id="clearHistory" class="clear-btn" type="button">
+        Clear
+      </button>
+    </div>
+    <div id="historyList" class="history-list">No downloads yet.</div>
+  </section>
 
-  </main>
+  <div class="notice">
+    <strong>Notice:</strong> Download only videos you own or are authorized
+    to save. Private, restricted and DRM-protected content is not supported.
+  </div>
 
-  <footer>
-    <p>© <span id="year"></span> eHub. All rights reserved.</p>
-    <p>Made with ❤️</p>
-  </footer>
+</main>
 
-  <script src="script.js"></script>
+<footer>
+  <p>© <span id="year"></span> eHub. All rights reserved.</p>
+</footer>
+
+<script src="script.js"></script>
 </body>
 </html>
