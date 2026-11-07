@@ -3,56 +3,96 @@ const $ = id => document.getElementById(id);
 
 const API = "https://ehub-video-downloader.onrender.com";
 
-let currentUrl = "";
-let currentPlatform = "";
-let busy = false;
+let currentVideo = null;
 
 $("year").textContent = new Date().getFullYear();
 
-function detectPlatform(url) {
-  const host = new URL(url).hostname.toLowerCase();
+// -------------------------
+// THEME
+// -------------------------
 
-  if (host.includes("instagram.com")) return "Instagram";
-  if (host.includes("facebook.com") || host === "fb.watch") return "Facebook";
-  if (host.includes("twitter.com") || host === "x.com") return "X / Twitter";
-  if (host.includes("youtube.com") || host === "youtu.be") return "YouTube";
-  if (host.includes("tiktok.com")) return "TikTok";
-  if (host.includes("pinterest.com") || host === "pin.it") return "Pinterest";
+function loadTheme() {
+  const theme = localStorage.getItem("ehubTheme");
 
-  return "Unknown";
-}
-
-function showMessage(message) {
-  $("message").textContent = message;
-}
-
-function setBusy(value) {
-  busy = value;
-  $("checkBtn").disabled = value;
-  $("directDownload").disabled = value;
+  if (theme === "light") {
+    document.body.classList.add("light");
+    $("themeBtn").textContent = "🌙";
+  } else {
+    $("themeBtn").textContent = "☀️";
+  }
 }
 
 $("themeBtn").onclick = () => {
   document.body.classList.toggle("light");
-  localStorage.setItem(
-    "ehubTheme",
-    document.body.classList.contains("light") ? "light" : "dark"
-  );
+
+  const light = document.body.classList.contains("light");
+
+  localStorage.setItem("ehubTheme", light ? "light" : "dark");
+  $("themeBtn").textContent = light ? "🌙" : "☀️";
 };
 
-if (localStorage.getItem("ehubTheme") === "light") {
-  document.body.classList.add("light");
+loadTheme();
+
+// -------------------------
+// MESSAGE
+// -------------------------
+
+function showMessage(text, type = "") {
+  $("message").textContent = text;
+  $("message").className = "message " + type;
 }
+
+// -------------------------
+// PLATFORM DETECTION
+// -------------------------
+
+function detectPlatform(url) {
+  const host = new URL(url).hostname.toLowerCase();
+
+  if (host === "x.com" || host.endsWith(".x.com") ||
+      host === "twitter.com" || host.endsWith(".twitter.com")) {
+    return "X / Twitter";
+  }
+
+  if (host === "instagram.com" || host.endsWith(".instagram.com")) {
+    return "Instagram";
+  }
+
+  if (host === "facebook.com" || host.endsWith(".facebook.com") ||
+      host === "fb.watch") {
+    return "Facebook";
+  }
+
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
+    return "TikTok";
+  }
+
+  if (host === "youtube.com" || host.endsWith(".youtube.com") ||
+      host === "youtu.be") {
+    return "YouTube";
+  }
+
+  throw new Error("This platform is not supported.");
+}
+
+// -------------------------
+// PASTE BUTTON
+// -------------------------
 
 $("pasteBtn").onclick = async () => {
   try {
     $("videoUrl").value = await navigator.clipboard.readText();
+    showMessage("Link pasted. Now click Find Video.", "success");
   } catch {
     showMessage("Please paste your link manually.");
   }
 };
 
-function addHistory(url, platform) {
+// -------------------------
+// HISTORY
+// -------------------------
+
+function addHistory(url, platform, title, quality) {
   let history = JSON.parse(
     localStorage.getItem("ehubHistory") || "[]"
   );
@@ -60,12 +100,15 @@ function addHistory(url, platform) {
   history.unshift({
     url,
     platform,
+    title,
+    quality,
     date: new Date().toLocaleString()
   });
 
   history = history.slice(0, 10);
 
   localStorage.setItem("ehubHistory", JSON.stringify(history));
+
   renderHistory();
 }
 
@@ -86,12 +129,14 @@ function renderHistory() {
     div.className = "history-item";
 
     const title = document.createElement("strong");
-    title.textContent = item.platform + " · " + item.date;
+    title.textContent = `${item.platform} · ${item.quality}p`;
 
-    const link = document.createElement("div");
-    link.textContent = item.url;
+    const details = document.createElement("div");
+    details.textContent =
+      `${item.title} · ${item.date}`;
 
-    div.append(title, link);
+    div.append(title, details);
+
     $("historyList").appendChild(div);
   });
 }
@@ -101,129 +146,153 @@ $("clearHistory").onclick = () => {
   renderHistory();
 };
 
-$("checkBtn").onclick = async () => {
-  if (busy) return;
+// -------------------------
+// BUTTON STATE
+// -------------------------
 
+function setBusy(busy) {
+  $("checkBtn").disabled = busy;
+  $("directDownload").disabled = busy || !currentVideo;
+
+  $("checkBtn").textContent = busy ? "Please wait..." : "Find Video";
+
+  if (busy) {
+    $("directDownload").textContent = "Please wait...";
+  } else {
+    $("directDownload").textContent = "Download Video";
+  }
+}
+
+// -------------------------
+// CHECK VIDEO
+// -------------------------
+
+$("checkBtn").onclick = async () => {
   const url = $("videoUrl").value.trim();
 
+  currentVideo = null;
   $("preview").classList.add("hidden");
-  currentUrl = "";
-  currentPlatform = "";
+  $("directDownload").disabled = true;
 
   if (!url) {
-    showMessage("Please enter a video URL.");
+    showMessage("Please enter a video URL.", "error");
     return;
   }
 
-  let parsed;
+  let platform;
 
   try {
-    parsed = new URL(url);
+    const parsed = new URL(url);
 
     if (parsed.protocol !== "https:") {
-      throw new Error();
-    }
-  } catch {
-    showMessage("Please enter a valid HTTPS video URL.");
-    return;
-  }
-
-  const platform = detectPlatform(url);
-
-  if (platform === "Unknown" || platform === "Pinterest") {
-    showMessage("This platform is not currently supported.");
-    return;
-  }
-
-  currentUrl = url;
-  currentPlatform = platform;
-
-  setBusy(true);
-  showMessage("Connecting to eHub server. Please wait...");
-
-  try {
-    const response = await fetch(API + "/api/info", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ url })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.detail || "Could not access this video.");
+      throw new Error("Please enter a valid HTTPS URL.");
     }
 
-    $("platformName").textContent = platform;
-
-    // Use an existing title element if your page has one.
-    const titleElement = $("videoTitle");
-    if (titleElement) {
-      titleElement.textContent = data.title || "Video ready";
-    }
-
-    $("preview").classList.remove("hidden");
-
-    showMessage(
-      "Video information found: " +
-      (data.title || "Video") +
-      ". Choose Download."
-    );
+    platform = detectPlatform(url);
 
   } catch (error) {
-    currentUrl = "";
-    showMessage(error.message || "Server connection failed.");
-  } finally {
-    setBusy(false);
-  }
-};
-
-$("directDownload").onclick = async () => {
-  if (!currentUrl || busy) {
-    showMessage("Please check a video link first.");
+    showMessage(error.message || "Invalid or unsupported URL.", "error");
     return;
   }
 
   setBusy(true);
-  showMessage("Preparing your video. Please wait...");
+  showMessage("Checking video. Please wait...");
 
   try {
-    const response = await fetch(API + "/api/download", {
+    const response = await fetch(`${API}/api/info`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        url: currentUrl,
-        quality: "best"
+        url: url,
+        quality: $("quality").value
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "Video could not be checked.");
+    }
+
+    currentVideo = {
+      url,
+      platform,
+      title: data.title || "Video",
+      duration: data.duration
+    };
+
+    $("platformName").textContent = platform;
+    $("videoTitle").textContent = currentVideo.title;
+
+    const duration = currentVideo.duration;
+
+    $("videoDuration").textContent =
+      duration ? `Duration: ${Math.floor(duration / 60)}m ${duration % 60}s` :
+      "Duration: Unknown";
+
+    $("preview").classList.remove("hidden");
+    $("directDownload").disabled = false;
+
+    showMessage("Video found! Select your quality and download.", "success");
+
+  } catch (error) {
+    showMessage(error.message || "Unable to connect to the downloader.", "error");
+  } finally {
+    setBusy(false);
+  }
+};
+
+// -------------------------
+// DOWNLOAD VIDEO
+// -------------------------
+
+$("directDownload").onclick = async () => {
+  if (!currentVideo) {
+    showMessage("Please find a video first.", "error");
+    return;
+  }
+
+  const quality = $("quality").value;
+
+  setBusy(true);
+  showMessage(`Downloading video in ${quality === "best" ? "Best Available" : quality + "p"} quality. Please wait...`);
+
+  try {
+    const response = await fetch(`${API}/api/download`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        url: currentVideo.url,
+        quality: quality
       })
     });
 
     if (!response.ok) {
-      let message = "Download failed.";
+      let errorMessage = "Download failed.";
 
       try {
         const data = await response.json();
-        message = data.detail || message;
+        errorMessage = data.detail || errorMessage;
       } catch {}
 
-      throw new Error(message);
+      throw new Error(errorMessage);
     }
 
     const blob = await response.blob();
+
+    if (!blob.size) {
+      throw new Error("The downloaded file is empty.");
+    }
+
     const objectUrl = URL.createObjectURL(blob);
-
-    const disposition =
-      response.headers.get("Content-Disposition") || "";
-
-    const match = disposition.match(/filename="?([^"]+)"?/i);
-    const filename = match ? match[1] : "ehub-video.mp4";
 
     const a = document.createElement("a");
     a.href = objectUrl;
-    a.download = filename;
+    a.download = `${currentVideo.platform.replace(/[^a-z0-9]/gi, "-")}-${quality}p.mp4`;
 
     document.body.appendChild(a);
     a.click();
@@ -231,15 +300,24 @@ $("directDownload").onclick = async () => {
 
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
 
-    addHistory(currentUrl, currentPlatform);
+    addHistory(
+      currentVideo.url,
+      currentVideo.platform,
+      currentVideo.title,
+      quality === "best" ? "Best" : quality
+    );
 
-    showMessage("Download started successfully!");
+    showMessage("Download started. Check your Downloads folder.", "success");
 
   } catch (error) {
-    showMessage(error.message || "Download failed. Try another public video.");
+    showMessage(error.message || "Download failed. Please try again.", "error");
   } finally {
     setBusy(false);
   }
 };
+
+// -------------------------
+// INITIALIZE
+// -------------------------
 
 renderHistory();
