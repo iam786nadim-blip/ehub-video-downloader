@@ -1,8 +1,8 @@
-import os
+
+import logging
 import re
 import shutil
 import tempfile
-import logging
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 # -----------------------------
-# LOGGING CONFIGURATION
+# LOGGING
 # -----------------------------
 
 logging.basicConfig(
@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger("ehub")
 
 # -----------------------------
-# FASTAPI APP
+# APP
 # -----------------------------
 
 app = FastAPI(title="eHub Video Downloader API")
@@ -39,39 +39,47 @@ app.add_middleware(
 )
 
 # -----------------------------
-# ALLOWED VIDEO PLATFORMS
+# ALLOWED HOSTS
 # -----------------------------
 
 ALLOWED_HOSTS = {
-    "x.com",
-    "www.x.com",
-    "twitter.com",
-    "www.twitter.com",
-    "instagram.com",
-    "www.instagram.com",
-    "facebook.com",
-    "www.facebook.com",
-    "m.facebook.com",
-    "fb.watch",
-    "tiktok.com",
-    "www.tiktok.com",
+    "x.com", "www.x.com",
+    "twitter.com", "www.twitter.com",
+    "instagram.com", "www.instagram.com",
+    "facebook.com", "www.facebook.com",
+    "m.facebook.com", "fb.watch",
+    "tiktok.com", "www.tiktok.com",
     "vm.tiktok.com",
-    "youtube.com",
-    "www.youtube.com",
-    "m.youtube.com",
-    "youtu.be"
+    "youtube.com", "www.youtube.com",
+    "m.youtube.com", "youtu.be"
 }
 
 # -----------------------------
-# VIDEO QUALITY OPTIONS
+# VIDEO FORMATS
 # -----------------------------
 
 FORMATS = {
-    "best": "best[ext=mp4]/best",
-    "1080": "best[height<=1080]/best",
-    "720": "best[height<=720]/best",
-    "480": "best[height<=480]/best",
-    "360": "best[height<=360]/best"
+    "best": "bestvideo+bestaudio/best",
+
+    "480": (
+        "bestvideo[height<=480]+bestaudio/"
+        "best[height<=480]"
+    ),
+
+    "720": (
+        "bestvideo[height<=720]+bestaudio/"
+        "best[height<=720]"
+    ),
+
+    "1080": (
+        "bestvideo[height<=1080]+bestaudio/"
+        "best[height<=1080]"
+    ),
+
+    "1440": (
+        "bestvideo[height<=1440]+bestaudio/"
+        "best[height<=1440]"
+    )
 }
 
 # -----------------------------
@@ -94,16 +102,16 @@ def validate_url(url):
 
         if parsed.scheme != "https" or not parsed.hostname:
             raise HTTPException(
-                400,
-                "Please use a public HTTPS link."
+                status_code=400,
+                detail="Please use a public HTTPS link."
             )
 
         hostname = parsed.hostname.lower()
 
         if hostname not in ALLOWED_HOSTS:
             raise HTTPException(
-                400,
-                "Unsupported video platform."
+                status_code=400,
+                detail="Unsupported video platform."
             )
 
     except HTTPException:
@@ -111,18 +119,17 @@ def validate_url(url):
 
     except Exception:
         raise HTTPException(
-            400,
-            "Invalid video URL."
+            status_code=400,
+            detail="Invalid video URL."
         )
 
 
 # -----------------------------
-# HOME ROUTE
+# HOME
 # -----------------------------
 
 @app.get("/")
 def home():
-
     return {
         "service": "eHub Video Downloader",
         "status": "online"
@@ -130,12 +137,11 @@ def home():
 
 
 # -----------------------------
-# HEALTH CHECK
+# HEALTH
 # -----------------------------
 
 @app.get("/health")
 def health():
-
     return {
         "ok": True,
         "service": "eHub Video Downloader"
@@ -143,7 +149,7 @@ def health():
 
 
 # -----------------------------
-# VIDEO INFORMATION
+# VIDEO INFO
 # -----------------------------
 
 @app.post("/api/info")
@@ -152,16 +158,15 @@ def video_info(request: VideoRequest):
     validate_url(request.url)
 
     try:
-
         options = {
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "socket_timeout": 30
+            "socket_timeout": 30,
+            "extractor_retries": 2
         }
 
         with yt_dlp.YoutubeDL(options) as ydl:
-
             info = ydl.extract_info(
                 request.url,
                 download=False
@@ -175,12 +180,11 @@ def video_info(request: VideoRequest):
         }
 
     except Exception:
-
         logger.exception("VIDEO INFO ERROR")
 
         raise HTTPException(
-            422,
-            "Video check failed. Please check backend logs."
+            status_code=422,
+            detail="Video check failed. Please check backend logs."
         )
 
 
@@ -196,11 +200,12 @@ def download_video(request: VideoRequest):
     quality = request.quality
 
     if quality not in FORMATS:
-        quality = "best"
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid video quality."
+        )
 
-    temp_dir = tempfile.mkdtemp(
-        prefix="ehub_"
-    )
+    temp_dir = tempfile.mkdtemp(prefix="ehub_")
 
     options = {
         "quiet": True,
@@ -212,13 +217,13 @@ def download_video(request: VideoRequest):
         ),
         "merge_output_format": "mp4",
         "max_filesize": 500 * 1024 * 1024,
-        "socket_timeout": 30
+        "socket_timeout": 30,
+        "retries": 2,
+        "fragment_retries": 2
     }
 
     try:
-
         with yt_dlp.YoutubeDL(options) as ydl:
-
             info = ydl.extract_info(
                 request.url,
                 download=True
@@ -227,13 +232,13 @@ def download_video(request: VideoRequest):
         candidates = [
             p for p in Path(temp_dir).glob("*")
             if p.is_file()
+            and p.suffix.lower() in {
+                ".mp4", ".mkv", ".webm", ".mov"
+            }
         ]
 
         if not candidates:
-
-            raise RuntimeError(
-                "No video file was created."
-            )
+            raise RuntimeError("No video file was created.")
 
         video_file = max(
             candidates,
@@ -241,9 +246,7 @@ def download_video(request: VideoRequest):
         )
 
         if video_file.stat().st_size > 500 * 1024 * 1024:
-            raise RuntimeError(
-                "Video exceeds the 500 MB limit."
-            )
+            raise RuntimeError("Video exceeds the 500 MB limit.")
 
         safe_title = re.sub(
             r"[^A-Za-z0-9._-]+",
@@ -254,7 +257,7 @@ def download_video(request: VideoRequest):
         filename = safe_title + video_file.suffix
 
         return FileResponse(
-            str(video_file),
+            path=str(video_file),
             media_type="application/octet-stream",
             filename=filename,
             background=BackgroundTask(
@@ -265,7 +268,6 @@ def download_video(request: VideoRequest):
         )
 
     except Exception:
-
         logger.exception("VIDEO DOWNLOAD ERROR")
 
         shutil.rmtree(
@@ -274,7 +276,7 @@ def download_video(request: VideoRequest):
         )
 
         raise HTTPException(
-            422,
-            "Download failed. Please check backend logs."
+            status_code=422,
+            detail="Download failed. Please check backend logs."
         )
         
