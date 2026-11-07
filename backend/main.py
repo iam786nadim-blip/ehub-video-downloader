@@ -7,26 +7,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import yt_dlp
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-# -----------------------------
-# LOGGING
-# -----------------------------
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ehub")
-
-# -----------------------------
-# APP
-# -----------------------------
 
 app = FastAPI(title="eHub Video Downloader API")
 
@@ -38,95 +26,102 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -----------------------------
-# ALLOWED HOSTS
-# -----------------------------
-
 ALLOWED_HOSTS = {
-    "x.com", "www.x.com",
-    "twitter.com", "www.twitter.com",
+    "x.com", "www.x.com", "twitter.com", "www.twitter.com",
     "instagram.com", "www.instagram.com",
-    "facebook.com", "www.facebook.com",
-    "m.facebook.com", "fb.watch",
-    "tiktok.com", "www.tiktok.com",
-    "vm.tiktok.com",
-    "youtube.com", "www.youtube.com",
-    "m.youtube.com", "youtu.be"
+    "facebook.com", "www.facebook.com", "m.facebook.com",
+    "fb.watch", "tiktok.com", "www.tiktok.com", "vm.tiktok.com",
+    "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"
 }
-
-# -----------------------------
-# VIDEO FORMATS
-# -----------------------------
-
-FORMATS = {
-    "best": "bestvideo+bestaudio/best",
-
-    "480": (
-        "bestvideo[height<=480]+bestaudio/"
-        "best[height<=480]"
-    ),
-
-    "720": (
-        "bestvideo[height<=720]+bestaudio/"
-        "best[height<=720]"
-    ),
-
-    "1080": (
-        "bestvideo[height<=1080]+bestaudio/"
-        "best[height<=1080]"
-    ),
-
-    "1440": (
-        "bestvideo[height<=1440]+bestaudio/"
-        "best[height<=1440]"
-    )
-}
-
-# -----------------------------
-# REQUEST MODEL
-# -----------------------------
 
 class VideoRequest(BaseModel):
     url: str = Field(min_length=8, max_length=2048)
-    quality: str = "best"
+    format_id: str = Field(min_length=1, max_length=100)
 
-
-# -----------------------------
-# URL VALIDATION
-# -----------------------------
 
 def validate_url(url):
-
     try:
         parsed = urlparse(url)
-
         if parsed.scheme != "https" or not parsed.hostname:
-            raise HTTPException(
-                status_code=400,
-                detail="Please use a public HTTPS link."
-            )
+            raise HTTPException(400, "Please use a public HTTPS link.")
 
-        hostname = parsed.hostname.lower()
-
-        if hostname not in ALLOWED_HOSTS:
-            raise HTTPException(
-                status_code=400,
-                detail="Unsupported video platform."
-            )
+        if parsed.hostname.lower() not in ALLOWED_HOSTS:
+            raise HTTPException(400, "Unsupported platform.")
 
     except HTTPException:
         raise
-
     except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid video URL."
+        raise HTTPException(400, "Invalid video URL.")
+
+
+def extractor_options():
+    return {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "socket_timeout": 30,
+        "extractor_retries": 2,
+    }
+
+
+def get_video_info(url):
+    validate_url(url)
+
+    try:
+        with yt_dlp.YoutubeDL(extractor_options()) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        formats = []
+
+        for f in info.get("formats", []):
+            # Browser preview needs video and audio in one format.
+            if f.get("vcodec") in (None, "none"):
+                continue
+            if f.get("acodec") in (None, "none"):
+                continue
+
+            height = f.get("height")
+            if not height:
+                continue
+
+            format_id = f.get("format_id")
+            if not format_id:
+                continue
+
+            ext = f.get("ext") or "unknown"
+
+            formats.append({
+                "format_id": str(format_id),
+                "height": height,
+                "quality": f.get("format_note") or f"{height}p",
+                "ext": ext,
+                "filesize": f.get("filesize") or f.get("filesize_approx"),
+                "vcodec": f.get("vcodec"),
+                "acodec": f.get("acodec"),
+            })
+
+        # Remove duplicate format IDs and sort by resolution.
+        unique = {}
+        for f in formats:
+            unique[f["format_id"]] = f
+
+        formats = sorted(
+            unique.values(),
+            key=lambda x: (x["height"], x["ext"] == "mp4"),
+            reverse=True
         )
 
+        return info, formats
 
-# -----------------------------
-# HOME
-# -----------------------------
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("VIDEO INFO ERROR")
+        raise HTTPException(
+            422,
+            "Video unavailable or unsupported. Check Render logs."
+        )
+
 
 @app.get("/")
 def home():
@@ -136,95 +131,96 @@ def home():
     }
 
 
-# -----------------------------
-# HEALTH
-# -----------------------------
-
 @app.get("/health")
 def health():
+    return {"ok": True}
+
+
+@app.post("/api/info")
+def video_info(request: dict):
+    url = request.get("url", "")
+    info, formats = get_video_info(url)
+
     return {
-        "ok": True,
-        "service": "eHub Video Downloader"
+        "title": info.get("title") or "Video",
+        "site": info.get("extractor_key") or "Video",
+        "duration": info.get("duration"),
+        "thumbnail": info.get("thumbnail"),
+        "formats": formats,
+        "status": "available"
     }
 
 
-# -----------------------------
-# VIDEO INFO
-# -----------------------------
+@app.get("/api/stream")
+def stream_video(
+    url: str = Query(..., min_length=8, max_length=2048),
+    format_id: str = Query(..., min_length=1, max_length=100)
+):
+    info, formats = get_video_info(url)
 
-@app.post("/api/info")
-def video_info(request: VideoRequest):
+    selected = next(
+        (f for f in formats if f["format_id"] == format_id),
+        None
+    )
 
-    validate_url(request.url)
+    if not selected:
+        raise HTTPException(404, "Selected video quality is unavailable.")
 
     try:
-        options = {
-            "quiet": True,
-            "no_warnings": True,
-            "noplaylist": True,
-            "socket_timeout": 30,
-            "extractor_retries": 2
-        }
+        options = extractor_options()
 
         with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(
-                request.url,
-                download=False
-            )
+            data = ydl.extract_info(url, download=False)
 
-        return {
-            "title": info.get("title", "Video"),
-            "site": info.get("extractor_key", "Video"),
-            "duration": info.get("duration"),
-            "status": "available"
-        }
-
-    except Exception:
-        logger.exception("VIDEO INFO ERROR")
-
-        raise HTTPException(
-            status_code=422,
-            detail="Video check failed. Please check backend logs."
+        chosen = next(
+            (
+                f for f in data.get("formats", [])
+                if str(f.get("format_id")) == format_id
+                and f.get("vcodec") not in (None, "none")
+                and f.get("acodec") not in (None, "none")
+            ),
+            None
         )
 
+        if not chosen or not chosen.get("url"):
+            raise HTTPException(404, "Preview is unavailable for this format.")
 
-# -----------------------------
-# VIDEO DOWNLOAD
-# -----------------------------
+        return RedirectResponse(
+            url=chosen["url"],
+            status_code=302
+        )
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("VIDEO STREAM ERROR")
+        raise HTTPException(422, "Unable to play this video online.")
+
 
 @app.post("/api/download")
 def download_video(request: VideoRequest):
+    info, formats = get_video_info(request.url)
 
-    validate_url(request.url)
+    selected = next(
+        (f for f in formats if f["format_id"] == request.format_id),
+        None
+    )
 
-    quality = request.quality
-
-    if quality not in FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid video quality."
-        )
+    if not selected:
+        raise HTTPException(404, "Selected quality is unavailable.")
 
     temp_dir = tempfile.mkdtemp(prefix="ehub_")
 
     options = {
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "format": FORMATS[quality],
-        "outtmpl": str(
-            Path(temp_dir) / "%(title).70s.%(ext)s"
-        ),
-        "merge_output_format": "mp4",
+        **extractor_options(),
+        "format": request.format_id,
+        "outtmpl": str(Path(temp_dir) / "%(title).70s.%(ext)s"),
         "max_filesize": 500 * 1024 * 1024,
-        "socket_timeout": 30,
-        "retries": 2,
-        "fragment_retries": 2
     }
 
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
-            info = ydl.extract_info(
+            downloaded_info = ydl.extract_info(
                 request.url,
                 download=True
             )
@@ -232,13 +228,10 @@ def download_video(request: VideoRequest):
         candidates = [
             p for p in Path(temp_dir).glob("*")
             if p.is_file()
-            and p.suffix.lower() in {
-                ".mp4", ".mkv", ".webm", ".mov"
-            }
         ]
 
         if not candidates:
-            raise RuntimeError("No video file was created.")
+            raise RuntimeError("No downloaded file was created.")
 
         video_file = max(
             candidates,
@@ -246,12 +239,12 @@ def download_video(request: VideoRequest):
         )
 
         if video_file.stat().st_size > 500 * 1024 * 1024:
-            raise RuntimeError("Video exceeds the 500 MB limit.")
+            raise RuntimeError("Video exceeds 500 MB limit.")
 
         safe_title = re.sub(
             r"[^A-Za-z0-9._-]+",
             "_",
-            info.get("title", "ehub-video")
+            downloaded_info.get("title") or "ehub-video"
         )[:80]
 
         filename = safe_title + video_file.suffix
@@ -269,14 +262,9 @@ def download_video(request: VideoRequest):
 
     except Exception:
         logger.exception("VIDEO DOWNLOAD ERROR")
-
-        shutil.rmtree(
-            temp_dir,
-            ignore_errors=True
-        )
-
+        shutil.rmtree(temp_dir, ignore_errors=True)
         raise HTTPException(
-            status_code=422,
-            detail="Download failed. Please check backend logs."
+            422,
+            "Download failed. Check Render logs."
         )
         
