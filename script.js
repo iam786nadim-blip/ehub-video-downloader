@@ -1,7 +1,11 @@
 
 const $ = id => document.getElementById(id);
 
-let currentMediaUrl = "";
+const API = "https://ehub-video-downloader.onrender.com";
+
+let currentUrl = "";
+let currentPlatform = "";
+let busy = false;
 
 $("year").textContent = new Date().getFullYear();
 
@@ -15,11 +19,17 @@ function detectPlatform(url) {
   if (host.includes("tiktok.com")) return "TikTok";
   if (host.includes("pinterest.com") || host === "pin.it") return "Pinterest";
 
-  return "Direct video link";
+  return "Unknown";
 }
 
-function showMessage(text) {
-  $("message").textContent = text;
+function showMessage(message) {
+  $("message").textContent = message;
+}
+
+function setBusy(value) {
+  busy = value;
+  $("checkBtn").disabled = value;
+  $("directDownload").disabled = value;
 }
 
 $("themeBtn").onclick = () => {
@@ -43,9 +53,16 @@ $("pasteBtn").onclick = async () => {
 };
 
 function addHistory(url, platform) {
-  let history = JSON.parse(localStorage.getItem("ehubHistory") || "[]");
+  let history = JSON.parse(
+    localStorage.getItem("ehubHistory") || "[]"
+  );
 
-  history.unshift({url, platform, date: new Date().toLocaleString()});
+  history.unshift({
+    url,
+    platform,
+    date: new Date().toLocaleString()
+  });
+
   history = history.slice(0, 10);
 
   localStorage.setItem("ehubHistory", JSON.stringify(history));
@@ -53,7 +70,9 @@ function addHistory(url, platform) {
 }
 
 function renderHistory() {
-  const history = JSON.parse(localStorage.getItem("ehubHistory") || "[]");
+  const history = JSON.parse(
+    localStorage.getItem("ehubHistory") || "[]"
+  );
 
   $("historyList").innerHTML = "";
 
@@ -83,10 +102,13 @@ $("clearHistory").onclick = () => {
 };
 
 $("checkBtn").onclick = async () => {
+  if (busy) return;
+
   const url = $("videoUrl").value.trim();
 
   $("preview").classList.add("hidden");
-  currentMediaUrl = "";
+  currentUrl = "";
+  currentPlatform = "";
 
   if (!url) {
     showMessage("Please enter a video URL.");
@@ -97,61 +119,127 @@ $("checkBtn").onclick = async () => {
 
   try {
     parsed = new URL(url);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+
+    if (parsed.protocol !== "https:") {
       throw new Error();
     }
   } catch {
-    showMessage("Please enter a valid HTTP or HTTPS URL.");
+    showMessage("Please enter a valid HTTPS video URL.");
     return;
   }
 
   const platform = detectPlatform(url);
 
-  if (platform !== "Direct video link") {
-    showMessage(
-      platform + " link detected. This frontend-only edition cannot extract videos from this platform. A compatible backend or official download option is required."
-    );
+  if (platform === "Unknown" || platform === "Pinterest") {
+    showMessage("This platform is not currently supported.");
     return;
   }
 
-  showMessage("Checking whether this is a directly accessible video...");
+  currentUrl = url;
+  currentPlatform = platform;
+
+  setBusy(true);
+  showMessage("Connecting to eHub server. Please wait...");
 
   try {
-    const response = await fetch(url, {method:"GET", mode:"cors"});
-    if (!response.ok) throw new Error("Video could not be accessed.");
+    const response = await fetch(API + "/api/info", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ url })
+    });
 
-    const type = response.headers.get("content-type") || "";
+    const data = await response.json();
 
-    if (!type.startsWith("video/")) {
-      throw new Error("The link did not return a video file.");
+    if (!response.ok) {
+      throw new Error(data.detail || "Could not access this video.");
     }
 
-    const blob = await response.blob();
-    currentMediaUrl = URL.createObjectURL(blob);
+    $("platformName").textContent = platform;
 
-    $("videoPreview").src = currentMediaUrl;
-    $("platformName").textContent = "Direct video link";
+    // Use an existing title element if your page has one.
+    const titleElement = $("videoTitle");
+    if (titleElement) {
+      titleElement.textContent = data.title || "Video ready";
+    }
+
     $("preview").classList.remove("hidden");
 
-    showMessage("Video found. You can preview and download it.");
-  } catch {
     showMessage(
-      "This source does not allow browser access (CORS), or the URL is not a direct video file. Try a permitted direct video link."
+      "Video information found: " +
+      (data.title || "Video") +
+      ". Choose Download."
     );
+
+  } catch (error) {
+    currentUrl = "";
+    showMessage(error.message || "Server connection failed.");
+  } finally {
+    setBusy(false);
   }
 };
 
-$("directDownload").onclick = () => {
-  if (!currentMediaUrl) return;
+$("directDownload").onclick = async () => {
+  if (!currentUrl || busy) {
+    showMessage("Please check a video link first.");
+    return;
+  }
 
-  const a = document.createElement("a");
-  a.href = currentMediaUrl;
-  a.download = "ehub-video.mp4";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  setBusy(true);
+  showMessage("Preparing your video. Please wait...");
 
-  addHistory($("videoUrl").value, $("platformName").textContent);
+  try {
+    const response = await fetch(API + "/api/download", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        url: currentUrl,
+        quality: "best"
+      })
+    });
+
+    if (!response.ok) {
+      let message = "Download failed.";
+
+      try {
+        const data = await response.json();
+        message = data.detail || message;
+      } catch {}
+
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+
+    const disposition =
+      response.headers.get("Content-Disposition") || "";
+
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    const filename = match ? match[1] : "ehub-video.mp4";
+
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+
+    addHistory(currentUrl, currentPlatform);
+
+    showMessage("Download started successfully!");
+
+  } catch (error) {
+    showMessage(error.message || "Download failed. Try another public video.");
+  } finally {
+    setBusy(false);
+  }
 };
 
 renderHistory();
